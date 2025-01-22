@@ -4,21 +4,29 @@ import sqlite3
 from datetime import datetime
 
 # Initialize Database
-conn = sqlite3.connect("progress.db", check_same_thread=False)
-cursor = conn.cursor()
+def create_connection():
+    conn = sqlite3.connect("progress.db", check_same_thread=False)
+    return conn
 
-# Create the progress table if it doesn't exist
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS progress (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    username TEXT NOT NULL,
-    subject TEXT NOT NULL,
-    chapter INTEGER NOT NULL,
-    status TEXT NOT NULL,
-    last_updated DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-""")
-conn.commit()
+# Create table if not exists
+def create_table():
+    conn = create_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS progress (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT NOT NULL,
+        subject TEXT NOT NULL,
+        chapter INTEGER NOT NULL,
+        status TEXT NOT NULL,
+        last_updated DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    """)
+    conn.commit()
+    conn.close()
+
+# Call create_table to ensure the table exists
+create_table()
 
 # Subjects and chapters
 subjects = {
@@ -68,6 +76,8 @@ async def update_progress(update: Update, context: CallbackContext) -> None:
         return
 
     now = datetime.now()
+    conn = create_connection()
+    cursor = conn.cursor()
     cursor.execute("""
     INSERT INTO progress (username, subject, chapter, status, last_updated)
     VALUES (?, ?, ?, ?, ?)
@@ -75,6 +85,7 @@ async def update_progress(update: Update, context: CallbackContext) -> None:
     DO UPDATE SET status=?, last_updated=?
     """, (username, subject, chapter, status, now, status, now))
     conn.commit()
+    conn.close()
 
     await update.message.reply_text(f"Progress updated for {subject.capitalize()} Chapter {chapter}: {status}")
 
@@ -82,6 +93,8 @@ async def update_progress(update: Update, context: CallbackContext) -> None:
 async def view_progress(update: Update, context: CallbackContext) -> None:
     username = context.args[0].lower() if context.args else update.message.from_user.username
 
+    conn = create_connection()
+    cursor = conn.cursor()
     cursor.execute("""
     SELECT subject, chapter, status, last_updated
     FROM progress
@@ -89,6 +102,7 @@ async def view_progress(update: Update, context: CallbackContext) -> None:
     ORDER BY subject, chapter
     """, (username,))
     rows = cursor.fetchall()
+    conn.close()
 
     if not rows:
         await update.message.reply_text(f"No progress found for {username}.")
@@ -104,8 +118,11 @@ async def view_progress(update: Update, context: CallbackContext) -> None:
 async def delete_progress(update: Update, context: CallbackContext) -> None:
     username = update.message.from_user.username or update.message.from_user.first_name
 
+    conn = create_connection()
+    cursor = conn.cursor()
     cursor.execute("DELETE FROM progress WHERE username=?", (username,))
     conn.commit()
+    conn.close()
 
     await update.message.reply_text("All your progress has been deleted.")
 
